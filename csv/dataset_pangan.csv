@@ -1,0 +1,28 @@
+kategori,bahan_baku,warna,bau,tekstur,suhu,lama_simpan,ph,aman_dimakan
+Daging,Ayam mentah,merah muda,normal,kenyal,4,2,6.0,1
+Daging,Daging sapi busuk,coklat kehijauan,busuk tajam,licin berlendir,25,24,6.8,0
+Daging,Daging sapi segar,merah segar,segar,kenyal,2,5,5.6,1
+Daging,Ayam tiren,biru lebam,amis menyengat,lembek,28,10,7.0,0
+Daging,Ikan segar,perak cerah,segar,kenyal licin,0,3,6.5,1
+Daging,Ikan busuk,mata cekung kusam,busuk,hancur,30,12,7.5,0
+Sayur,Sayur segar,hijau segar,segar,renyah,10,24,6.0,1
+Sayur,Bayam layu,hijau kecoklatan,apek,layu berlendir,28,48,7.2,0
+Sayur,Wortel segar,oranye cerah,tanah segar,keras,15,72,6.0,1
+Sayur,Tomat busuk,merah berair,asam menyengat,lembek hancur,30,96,4.0,0
+Nasi,Nasi baru,putih bersih,wangi pandan,pulen,60,1,6.8,1
+Nasi,Nasi semalam,putih kekuningan,agak asam,lembek,25,12,5.5,0
+Nasi,Nasi basi,berjamur oranye,tengik,berlendir,30,24,4.5,0
+Susu,Susu segar,putih bersih,creamy,cair,4,24,6.6,1
+Susu,Susu basi,kekuningan aneh,asam kuat,menggumpal,28,48,4.5,0
+Susu,Yoghurt baik,putih kental,asam segar,kental halus,4,168,4.0,1
+Roti,Roti tawar baru,putih bersih,ragi harum,empuk,25,24,5.5,1
+Roti,Roti berjamur,hijau bercak,jamur tajam,lembek,30,120,6.0,0
+Gorengan,Tahu goreng baru,coklat keemasan,gurih,renyah,40,2,6.5,1
+Gorengan,Tempe goreng basi,coklat gelap,tengik,alot,25,24,5.0,0
+Gorengan,Bakwan lama,berminyak parah,tengik,lembek,25,12,5.5,0
+Buah,Buah segar,warna alami,manis segar,padat juicy,20,24,3.5,1
+Buah,Pisang busuk,hitam legam,alkohol,lembek berair,28,120,7.0,0
+Telur,Telur segar,cerah,normal,padat,20,72,7.6,1
+Telur,Telur retak,kusam,sedikit amis,retak,28,168,8.0,0
+Minuman,Jus jeruk segar,oranye,jeruk segar,cair,5,2,3.5,1
+Minuman,Jus basi,berbuih,fermentasi,menggumpal,30,48,3.0,0
