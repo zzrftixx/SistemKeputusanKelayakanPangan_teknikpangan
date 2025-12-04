@@ -2,26 +2,39 @@ import streamlit as st
 import pandas as pd
 import joblib
 import numpy as np
-import openai
+import google.generativeai as genai
+import os
+from datetime import datetime
 
 st.set_page_config(page_title="Food Safety Lab", layout="wide")
 
 # Sidebar untuk Konfigurasi AI
 with st.sidebar:
-    st.header("⚙️ Konfigurasi AI")
-    # API Key dari user (Pre-filled)
-    # NOTE: Jangan hardcode API Key di sini jika ingin deploy ke public repo!
-    # Gunakan Streamlit Secrets atau Environment Variables.
-    default_key = "" 
-    api_key = st.text_input("OpenAI API Key", value=default_key, type="password", help="Masukkan API Key untuk fitur penjelasan AI.")
+    st.header("⚙️ Konfigurasi AI (Gemini)")
+    # API Key dari user (Hardcoded sesuai request)
+    # WARNING: Jangan push file ini ke public repo tanpa menghapus key ini!
+    default_key = "AIzaSyAsxUN8radcvflnv4_2QsZKrEk69u1FZdA"
     
-    if api_key:
-        openai.api_key = api_key
-        st.success("API Key terdeteksi!")
-    else:
-        st.warning("Masukkan API Key untuk mengaktifkan fitur penjelasan.")
+    # Kita set langsung ke google-generativeai
+    genai.configure(api_key=default_key)
+    
+    # Tampilkan status (masked)
+    st.success(f"API Key Terpasang: {default_key[:5]}...{default_key[-4:]}")
+    st.info("Mode: Super Informative AI (Gemini)")
+    
+    st.divider()
+    st.header("📂 Data Laboratorium")
+    if os.path.exists("history_lab.csv"):
+        df_log = pd.read_csv("history_lab.csv")
+        st.write(f"Total Sampel: {len(df_log)}")
+        st.download_button(
+            label="Download Log Lab (CSV)",
+            data=df_log.to_csv(index=False),
+            file_name="history_lab.csv",
+            mime="text/csv"
+        )   
 
-st.title("Sistem Keputusan Kelayakan Pangan (Klasifikasi Makanan Aman / Tidak Aman)")
+st.title("Pendeteksi Kelayakan Makanan")
 
 st.write("Isi karakteristik makanan lalu klik prediksi.")
 
@@ -46,8 +59,71 @@ with col2:
     lama_simpan = st.number_input("Lama Simpan (Jam):", min_value=0, value=1)
     ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, 7.0)
 
+# --- LOGIC FUNCTIONS (PHASE 2) ---
+
+def get_recommendation(kategori, suhu, prediction_label):
+    if prediction_label == "TIDAK AMAN / BERBAHAYA":
+        return "⛔ **TINDAKAN:** Segera pisahkan dan buang. Jangan berikan ke hewan ternak. Bersihkan area penyimpanan."
+    
+    # Jika Aman
+    rec = "✅ **SARAN:** "
+    if kategori in ["Daging", "Ikan"]:
+        if suhu > 4:
+            rec += "Segera masak atau simpan di freezer (-18°C) jika tidak langsung diolah."
+        else:
+            rec += "Pertahankan suhu dingin. Masak hingga matang sempurna (min 75°C)."
+    elif kategori in ["Sayur", "Buah"]:
+        rec += "Cuci bersih dengan air mengalir. Simpan di suhu sejuk (10-15°C) atau kulkas."
+    elif kategori == "Susu":
+        rec += "Pastikan wadah tertutup rapat. Simpan di suhu < 4°C."
+    elif kategori == "Nasi":
+        rec += "Segera habiskan. Jangan simpan di suhu ruang > 4 jam (risiko B. cereus)."
+    else:
+        rec += "Simpan di tempat kering dan sejuk. Cek tanggal kadaluarsa."
+    return rec
+
+def estimate_shelf_life(kategori, suhu, lama_simpan_sekarang):
+    # Heuristik sederhana (Estimasi kasar)
+    base_hours = 24 # Default
+    
+    if kategori in ["Daging", "Ikan", "Susu"]:
+        if suhu < 0: base_hours = 720 # 1 bulan (beku)
+        elif suhu < 5: base_hours = 48 # 2 hari (kulkas)
+        else: base_hours = 4 # 4 jam (suhu ruang)
+    elif kategori in ["Sayur", "Buah"]:
+        if suhu < 15: base_hours = 168 # 1 minggu
+        else: base_hours = 48 # 2 hari
+    elif kategori == "Nasi":
+        if suhu > 60: base_hours = 12 # Warmer
+        elif suhu < 5: base_hours = 24 
+        else: base_hours = 6 # Suhu ruang bahaya
+        
+    sisa = base_hours - lama_simpan_sekarang
+    if sisa < 0: return "0 jam (Sudah lewat batas aman)"
+    return f"{sisa} jam lagi (Estimasi pada suhu {suhu}°C)"
+
+def log_to_csv(data_dict, prediction, risk_score):
+    file_name = "history_lab.csv"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    log_data = {
+        "timestamp": timestamp,
+        **data_dict,
+        "prediksi": prediction,
+        "risk_score": risk_score
+    }
+    
+    df_new = pd.DataFrame([log_data])
+    
+    if not os.path.exists(file_name):
+        df_new.to_csv(file_name, index=False)
+    else:
+        df_new.to_csv(file_name, mode='a', header=False, index=False)
+
+# --- END LOGIC FUNCTIONS ---
+
 # Fungsi Penjelasan Offline (Rule-Based)
-def generate_offline_explanation(data_dict, prediction_label, risk_score):
+def generate_offline_explanation(data_dict, prediction_label, risk_score, error_msg=""):
     reasons = []
     recommendations = []
     
@@ -82,6 +158,8 @@ def generate_offline_explanation(data_dict, prediction_label, risk_score):
     reason_text = " ".join(reasons) if reasons else "Kombinasi parameter memerlukan pengecekan lab lebih lanjut."
     rec_text = " ".join(recommendations) if recommendations else "Lakukan uji organoleptik (bau/rasa) sebelum konsumsi."
 
+    error_display = f"\n\n**⚠️ ERROR API:** {error_msg}" if error_msg else ""
+
     return f"""
     ### ⚠️ Mode Offline (AI Tidak Terhubung)
     
@@ -90,17 +168,17 @@ def generate_offline_explanation(data_dict, prediction_label, risk_score):
     *   **Deteksi Anomali**: {reason_text}
     *   **Saran**: {rec_text}
     
-    *Catatan: Masukkan API Key OpenAI yang valid untuk penjelasan ilmiah super detail.*
+    *Catatan: Terjadi masalah saat menghubungi AI. Sistem menggunakan logika offline.*
+    {error_display}
     """
 
-# Fungsi Penjelasan AI
+# Fungsi Penjelasan AI (Gemini)
 def generate_explanation(data_dict, prediction_label, risk_score):
-    if not api_key:
-        return generate_offline_explanation(data_dict, prediction_label, risk_score)
+    # API Key sudah di-set di awal (hardcoded)
     
     prompt = f"""
-    Kamu adalah Profesor Ahli Mikrobiologi dan Keamanan Pangan (Food Safety Scientist).
-    Lakukan analisis forensik mendalam terhadap sampel makanan berikut:
+    Kamu adalah Profesor Ahli Mikrobiologi dan Keamanan Pangan (Food Safety Scientist) dengan pengalaman 30 tahun.
+    Tugasmu adalah memberikan LAPORAN FORENSIK LENGKAP mengenai sampel makanan ini. Jangan pelit informasi.
 
     DATA SAMPEL:
     - Kategori: {data_dict['kategori']}
@@ -112,28 +190,56 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     - Prediksi: {prediction_label}
     - Tingkat Risiko: {risk_score:.1f}%
 
-    TUGAS ANALISIS (Jawab dengan format Markdown yang rapi):
-    1. **Diagnosa Ilmiah**: Jelaskan mekanisme biokimia yang terjadi. Mengapa kombinasi suhu {data_dict['suhu']}°C dan pH {data_dict['ph']} menyebabkan kondisi ini? Jelaskan proses denaturasi atau fermentasi yang relevan.
-    2. **Analisis Mikrobiologi**: Identifikasi 2-3 patogen spesifik yang paling mungkin tumbuh di media {data_dict['kategori']} dengan kondisi ini (misal: Salmonella sp., Listeria, Clostridium botulinum, Bacillus cereus, atau jamur Rhizopus). Jelaskan bahayanya.
-    3. **Rekomendasi Penanganan Kritis**: Berikan instruksi langkah demi langkah. Jika aman, bagaimana cara menyimpannya agar tetap awet? Jika bahaya, bagaimana cara membuangnya agar tidak mengkontaminasi lingkungan?
-    
-    Gunakan bahasa yang otoritatif, ilmiah, namun mudah dipahami. Berikan fakta mengejutkan jika ada.
+    BUATLAH LAPORAN DENGAN STRUKTUR BERIKUT (Gunakan Bahasa Indonesia Formal & Ilmiah):
+
+    ### 1. 🔬 Analisis Biokimia & Fisik (Deep Dive)
+    Jelaskan secara mendalam apa yang terjadi pada level molekuler. 
+    - Hubungkan suhu {data_dict['suhu']}°C dengan kinetika reaksi pembusukan.
+    - Hubungkan pH {data_dict['ph']} dengan stabilitas mikroba.
+    - Jelaskan mengapa tekstur '{data_dict['tekstur']}' dan bau '{data_dict['bau']}' muncul (misal: proteolisis, lipolisis, fermentasi).
+
+    ### 2. 🦠 Identifikasi Bahaya Mikrobiologis
+    Sebutkan minimal 3 patogen spesifik yang SANGAT MUNGKIN tumbuh di {data_dict['kategori']} pada kondisi ini.
+    - Contoh: Salmonella, E. coli O157:H7, Listeria monocytogenes, Clostridium botulinum, Staphylococcus aureus, Bacillus cereus, Aspergillus flavus.
+    - Jelaskan dampak kesehatan jika tertelan (misal: neurotoksin, infeksi gastrointestinal).
+
+    ### 3. 🛡️ Protokol Penanganan & Mitigasi
+    Berikan instruksi teknis yang sangat spesifik.
+    - Jika AMAN: Bagaimana cara memperpanjang umur simpannya? (Suhu ideal, jenis wadah).
+    - Jika BAHAYA: Bagaimana prosedur pembuangan yang aman agar spora tidak menyebar? Apakah pemanasan bisa membunuh racunnya?
+
+    ### 4. 📊 Kesimpulan Profesor
+    Satu kalimat penutup yang tegas mengenai status kelayakan konsumsi.
+
+    Panjang jawaban minimal 300 kata. Berikan fakta ilmiah yang jarang diketahui orang awam.
     """
 
-    try:
-        client = openai.OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "Kamu adalah Profesor Keamanan Pangan kelas dunia."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        # Fallback ke offline jika error (misal kuota habis)
-        return generate_offline_explanation(data_dict, prediction_label, risk_score)
+    # Daftar model yang akan dicoba (Fallback mechanism)
+    models_to_try = [
+        'gemini-2.0-flash',       # Standard Flash (Cepat & Stabil)
+        'gemini-2.0-flash-lite',  # Lite version
+        'gemini-2.5-flash',       # Newer version
+        'gemini-flash-latest'     # Alias for latest stable
+    ]
+
+    last_error = ""
+
+    for model_name in models_to_try:
+        try:
+            # Konfigurasi Model Gemini
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            last_error = str(e)
+            if "429" in last_error:
+                continue # Coba model berikutnya jika limit habis
+            else:
+                # Jika error lain (misal 404), mungkin model tidak ada, lanjut coba yang lain
+                continue
+    
+    # Jika semua gagal
+    return generate_offline_explanation(data_dict, prediction_label, risk_score, error_msg=f"Semua model sibuk/gagal. Terakhir: {last_error}")
 
 # Tombol Prediksi
 if st.button("Cek Keamanan Pangan"):
@@ -154,18 +260,40 @@ if st.button("Cek Keamanan Pangan"):
     probability = model.predict_proba(input_data)[0][1] # Ambil probabilitas kelas 1 (Aman)
     risk_score = (1 - probability) * 100 # Risk score adalah kebalikan dari aman
 
+    # --- LOGGING (PHASE 2) ---
+    pred_label = "AMAN DIMAKAN" if prediction == 1 else "TIDAK AMAN / BERBAHAYA"
+    
+    # Prepare data dict
+    data_dict = {
+        "kategori": kategori,
+        "bahan_baku": bahan,
+        "warna": warna,
+        "bau": bau,
+        "tekstur": tekstur,
+        "suhu": suhu,
+        "lama_simpan": lama_simpan,
+        "ph": ph
+    }
+    
+    # Save to CSV
+    log_to_csv(data_dict, pred_label, risk_score)
+    st.toast("Data berhasil disimpan ke Log Lab!", icon="💾")
+    # -------------------------
+
     st.divider()
     st.subheader("Hasil Analisis Laboratorium")
 
     col_res1, col_res2 = st.columns(2)
-
-    pred_label = "AMAN DIMAKAN" if prediction == 1 else "TIDAK AMAN / BERBAHAYA"
 
     with col_res1:
         if prediction == 1:
             st.success(f"✅ STATUS: {pred_label}")
         else:
             st.error(f"⚠️ STATUS: {pred_label}")
+        
+        # Tampilkan Saran & Shelf Life (PHASE 2)
+        st.info(get_recommendation(kategori, suhu, pred_label))
+        st.write(f"**Estimasi Sisa Umur Simpan:** {estimate_shelf_life(kategori, suhu, lama_simpan)}")
 
     with col_res2:
         st.metric(label="Risk Score (Tingkat Risiko)", value=f"{risk_score:.1f}%")
@@ -180,16 +308,5 @@ if st.button("Cek Keamanan Pangan"):
     st.divider()
     st.subheader("🤖 Penjelasan Ahli AI (Super Detail)")
     with st.spinner("Profesor sedang menganalisis sampel di mikroskop..."):
-        # Prepare data dict for prompt
-        data_dict = {
-            "kategori": kategori,
-            "bahan_baku": bahan,
-            "warna": warna,
-            "bau": bau,
-            "tekstur": tekstur,
-            "suhu": suhu,
-            "lama_simpan": lama_simpan,
-            "ph": ph
-        }
         explanation = generate_explanation(data_dict, pred_label, risk_score)
         st.markdown(explanation)
