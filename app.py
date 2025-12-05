@@ -12,26 +12,33 @@ st.set_page_config(page_title="Food Safety Lab", layout="wide")
 with st.sidebar:
     st.header("⚙️ Konfigurasi AI (Gemini)")
     
-    default_key = ""
-    # Cek apakah ada API Key di Secrets (Aman) dengan Try-Except
+    # Logika Keamanan API Key (Anti-Intip)
+    api_key = None
+    using_secrets = False
+
+    # 1. Coba load dari Secrets (Server-side only)
     try:
         if "GEMINI_API_KEY" in st.secrets:
-            default_key = st.secrets["GEMINI_API_KEY"]
-            st.success("API Key dimuat dari Secrets (Aman) 🔒")
-    except FileNotFoundError:
-        pass # File secrets belum ada, lanjut saja
-    except Exception:
-        pass # Error lain terkait secrets
+            api_key = st.secrets["GEMINI_API_KEY"]
+            using_secrets = True
+            st.success("✅ API Key terdeteksi dari Secrets (Aman & Tersembunyi).")
+    except:
+        pass
 
-    # Input manual (jika tidak ada di secrets atau ingin ganti)
-    api_key = st.text_input("Gemini API Key", value=default_key, type="password", help="Masukkan API Key Google Gemini.")
-    
+    # 2. Opsi Timpa/Input Manual
+    # Value dikosongkan agar key asli tidak terekspos di frontend (Inspect Element)
+    manual_key = st.text_input("Ganti/Isi API Key (Opsional)", type="password", help="Isi ini HANYA jika ingin menggunakan key yang berbeda dari Secrets.")
+
+    # 3. Penentuan Key Final
+    if manual_key:
+        api_key = manual_key
+        st.info("Menggunakan API Key manual.")
+    elif not api_key:
+        st.warning("⚠️ Mode Offline: API Key belum diset.")
+
+    # 4. Konfigurasi
     if api_key:
         genai.configure(api_key=api_key)
-        if api_key != default_key:
-            st.success("API Key Terpasang Manual!")
-    else:
-        st.warning("Mode Offline: Masukkan API Key untuk AI Super.")
     
     st.info("Mode: Super Informative AI (Gemini)")
 
@@ -270,41 +277,41 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     # API Key sudah di-set di awal (hardcoded)
     
     prompt = f"""
-    Kamu adalah Profesor Ahli Mikrobiologi dan Keamanan Pangan (Food Safety Scientist) dengan pengalaman 30 tahun.
-    Tugasmu adalah memberikan LAPORAN FORENSIK LENGKAP mengenai sampel makanan ini. Jangan pelit informasi.
+    Kamu adalah Profesor Ahli Mikrobiologi dan Keamanan Pangan (Scientific Food Safety Expert). 
+    JANGAN ngarang indah. Gunakan basis DATA, TEORI ILMIAH, dan REFERENSI JURNAL/REGULASI.
 
-    DATA SAMPEL:
+    DATA SAMPEL (Analisis ini):
     - Kategori: {data_dict['kategori']}
     - Bahan: {data_dict['bahan_baku']}
-    - Ciri Fisik: Warna {data_dict['warna']}, Bau {data_dict['bau']}, Tekstur {data_dict['tekstur']}
-    - Parameter Lingkungan: Suhu {data_dict['suhu']}°C, Waktu {data_dict['lama_simpan']} jam, pH {data_dict['ph']}
+    - Parameter: Warna={data_dict['warna']}, Bau={data_dict['bau']}, Tekstur={data_dict['tekstur']}
+    - Lingkungan: Suhu={data_dict['suhu']}°C, Waktu={data_dict['lama_simpan']} jam, pH={data_dict['ph']}
 
-    HASIL LAB:
-    - Prediksi: {prediction_label}
-    - Tingkat Risiko: {risk_score:.1f}%
+    HASIL MACHINE LEARNING:
+    - Status: {prediction_label} (Risk Score: {risk_score:.1f}%)
 
-    BUATLAH LAPORAN DENGAN STRUKTUR BERIKUT (Gunakan Bahasa Indonesia Formal & Ilmiah):
+    INSTRUKSI PENYUSUNAN LAPORAN ILMIAH (Wajib Cite Source):
 
-    ### 1. 🔬 Analisis Biokimia & Fisik (Deep Dive)
-    Jelaskan secara mendalam apa yang terjadi pada level molekuler. 
-    - Hubungkan suhu {data_dict['suhu']}°C dengan kinetika reaksi pembusukan.
-    - Hubungkan pH {data_dict['ph']} dengan stabilitas mikroba.
-    - Jelaskan mengapa tekstur '{data_dict['tekstur']}' dan bau '{data_dict['bau']}' muncul (misal: proteolisis, lipolisis, fermentasi).
+    ### 1. 📐 Landasan Teori & Kalkulasi (Scientific Basis)
+    Jelaskan logika ilmiah di balik keputusan ini menggunakan teori yang relevan:
+    - **Teori Hurdle (Leistner, 2000)**: Jelaskan bagaimana interaksi pH {data_dict['ph']}, Suhu {data_dict['suhu']}°C, dan Waktu saling mempengaruhi. Apakah ada 'barier' yang jebol?
+    - **Kinetika Pembusukan (Q10 / Arrhenius)**: Jika suhu tinggi, jelaskan secara teoritis seberapa cepat laju reaksi enzimatis/mikroba meningkat.
+    - **Faktor Intrinsik/Ekstrinsik**: Klasifikasikan parameter di atas (pH = Intrinsik, Suhu = Ekstrinsik) dan dampaknya.
 
-    ### 2. 🦠 Identifikasi Bahaya Mikrobiologis
-    Sebutkan minimal 3 patogen spesifik yang SANGAT MUNGKIN tumbuh di {data_dict['kategori']} pada kondisi ini.
-    - Contoh: Salmonella, E. coli O157:H7, Listeria monocytogenes, Clostridium botulinum, Staphylococcus aureus, Bacillus cereus, Aspergillus flavus.
-    - Jelaskan dampak kesehatan jika tertelan (misal: neurotoksin, infeksi gastrointestinal).
+    ### 2. 🧫 Analisis Mikrobiologis Spesifik
+    Jangan cuma bilang "bakteri". Sebutkan Spesies dan Referensi Regulasi (SNI/BPOM/FDA).
+    - Mikroba Target: Apa bakteri patogen utama untuk {data_dict['bahan_baku']}? (Misal: Salmonella sp. untuk ayam, B. cereus untuk nasi).
+    - Batas Kritis: Sebutkan referensi batas aman (Misal: SNI 7388:2009 menetapkan batas maksimum X koloni/g).
+    - Hubungan dengan pH Sample ({data_dict['ph']}): Apakah pH ini mendukung pertumbuhan mikroba target tersebut? (Sebutkan range pH tumbuh optimum bakteri tsb).
 
-    ### 3. 🛡️ Protokol Penanganan & Mitigasi
-    Berikan instruksi teknis yang sangat spesifik.
-    - Jika AMAN: Bagaimana cara memperpanjang umur simpannya? (Suhu ideal, jenis wadah).
-    - Jika BAHAYA: Bagaimana prosedur pembuangan yang aman agar spora tidak menyebar? Apakah pemanasan bisa membunuh racunnya?
+    ### 3. 🛡️ Mitigasi Berbasis Riset
+    Berikan solusi handling yang teknis, bukan tips dapur biasa.
+    - Metode Pengawetan: Sarankan metode spesifik (Pasteurisasi, Pendinginan Cepat, Pengasaman).
+    - Critical Control Point (CCP): Jika ini masuk HACCP, di titik mana kesalahan terjadi?
 
-    ### 4. 📊 Kesimpulan Profesor
-    Satu kalimat penutup yang tegas mengenai status kelayakan konsumsi.
+    ### 📌 Referensi
+    Cantumkan 2-3 referensi buku/jurnal/regulasi yang valid (Contoh: "Bam, FDA (2021)", "SNI 3925:2008", "Jurnal Teknologi Pangan Vol X").
 
-    Panjang jawaban minimal 300 kata. Berikan fakta ilmiah yang jarang diketahui orang awam.
+    Gaya Bahasa: Akademis, Objektif, Padat Data. Hindari bahasa marketing/copywriting.
     """
 
     # Daftar model yang akan dicoba (Fallback mechanism)
