@@ -11,17 +11,30 @@ st.set_page_config(page_title="Food Safety Lab", layout="wide")
 # Sidebar untuk Konfigurasi AI
 with st.sidebar:
     st.header("⚙️ Konfigurasi AI (Gemini)")
-    # API Key dari user (Hardcoded sesuai request)
-    # WARNING: Jangan push file ini ke public repo tanpa menghapus key ini!
-    default_key = "AIzaSyAsxUN8radcvflnv4_2QsZKrEk69u1FZdA"
     
-    # Kita set langsung ke google-generativeai
-    genai.configure(api_key=default_key)
+    default_key = ""
+    # Cek apakah ada API Key di Secrets (Aman) dengan Try-Except
+    try:
+        if "GEMINI_API_KEY" in st.secrets:
+            default_key = st.secrets["GEMINI_API_KEY"]
+            st.success("API Key dimuat dari Secrets (Aman) 🔒")
+    except FileNotFoundError:
+        pass # File secrets belum ada, lanjut saja
+    except Exception:
+        pass # Error lain terkait secrets
+
+    # Input manual (jika tidak ada di secrets atau ingin ganti)
+    api_key = st.text_input("Gemini API Key", value=default_key, type="password", help="Masukkan API Key Google Gemini.")
     
-    # Tampilkan status (masked)
-    st.success(f"API Key Terpasang: {default_key[:5]}...{default_key[-4:]}")
+    if api_key:
+        genai.configure(api_key=api_key)
+        if api_key != default_key:
+            st.success("API Key Terpasang Manual!")
+    else:
+        st.warning("Mode Offline: Masukkan API Key untuk AI Super.")
+    
     st.info("Mode: Super Informative AI (Gemini)")
-    
+
     st.divider()
     st.header("📂 Data Laboratorium")
     if os.path.exists("history_lab.csv"):
@@ -41,23 +54,50 @@ st.write("Isi karakteristik makanan lalu klik prediksi.")
 # Load model pipeline (sudah termasuk preprocessor)
 model = joblib.load("model.pkl")
 
+# Load Dataset untuk Dropdown Dinamis & Auto-pH
+try:
+    df_pangan = pd.read_csv("dataset_pangan.csv")
+    # 1. Database Bahan per Kategori
+    food_db = df_pangan.groupby('kategori')['bahan_baku'].unique().apply(list).to_dict()
+    # 2. Database Rata-rata pH per Bahan
+    ph_db = df_pangan.groupby('bahan_baku')['ph'].mean().to_dict()
+    categories = sorted(list(food_db.keys()))
+except Exception as e:
+    st.error(f"Gagal memuat dataset: {e}")
+    categories = ["Daging", "Sayur", "Buah"] # Fallback
+    food_db = {}
+    ph_db = {}
+
 # Layout 2 Kolom
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Karakteristik Fisik")
-    # Ambil opsi unik dari dataset untuk dropdown (hardcoded sementara agar cepat)
-    kategori = st.selectbox("Kategori Pangan:", ["Daging", "Sayur", "Nasi", "Susu", "Roti", "Gorengan", "Buah", "Telur", "Minuman"])
-    bahan = st.text_input("Nama Bahan (Contoh: Ayam mentah):", "Ayam mentah")
+    
+    # 1. Kategori (Dinamis dari CSV)
+    kategori = st.selectbox("Kategori Pangan:", categories)
+    
+    # 2. Bahan (Filter berdasarkan Kategori)
+    bahan_options = food_db.get(kategori, ["Lainnya"])
+    bahan = st.selectbox("Nama Bahan:", bahan_options)
+    
+    # 3. Warna & Bau & Tekstur (Tetap Hardcoded/Dinamis jika mau, sementara hardcoded dulu biar cepat)
     warna = st.selectbox("Warna:", ["merah muda", "merah segar", "coklat kehijauan", "biru lebam", "perak cerah", "mata cekung kusam", "hijau segar", "hijau kecoklatan", "oranye cerah", "merah berair", "putih bersih", "putih kekuningan", "berjamur oranye", "kekuningan aneh", "putih kental", "coklat keemasan", "coklat gelap", "berminyak parah", "warna alami", "hitam legam", "cerah", "kusam", "oranye", "berbuih"])
     bau = st.selectbox("Bau:", ["normal", "busuk tajam", "segar", "amis menyengat", "busuk", "apek", "tanah segar", "asam menyengat", "wangi pandan", "agak asam", "tengik", "creamy", "asam kuat", "asam segar", "ragi harum", "jamur tajam", "gurih", "manis segar", "alkohol", "sedikit amis", "jeruk segar", "fermentasi"])
     tekstur = st.selectbox("Tekstur:", ["kenyal", "licin berlendir", "lembek", "kenyal licin", "hancur", "renyah", "layu berlendir", "keras", "lembek hancur", "pulen", "menggumpal", "kental halus", "empuk", "alot", "padat juicy", "lembek berair", "padat", "retak", "cair"])
 
 with col2:
     st.subheader("Kondisi Penyimpanan")
+    
+    # 4. Suhu
     suhu = st.slider("Suhu Penyimpanan (°C):", -10, 100, 25)
+    
+    # 5. Lama Simpan
     lama_simpan = st.number_input("Lama Simpan (Jam):", min_value=0, value=1)
-    ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, 7.0)
+    
+    # 6. pH (Auto-Adjust berdasarkan Bahan)
+    default_ph = float(ph_db.get(bahan, 7.0))
+    ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, default_ph, help=f"Rata-rata pH untuk {bahan} adalah {default_ph}")
 
 # --- LOGIC FUNCTIONS (PHASE 2) ---
 
@@ -122,53 +162,64 @@ def log_to_csv(data_dict, prediction, risk_score):
 
 # --- END LOGIC FUNCTIONS ---
 
-# Fungsi Penjelasan Offline (Rule-Based)
+# Fungsi Penjelasan Offline (Rule-Based & Enhanced UI)
 def generate_offline_explanation(data_dict, prediction_label, risk_score, error_msg=""):
     reasons = []
     recommendations = []
     
-    # Analisis Suhu
+    # --- LOGIKA PAKAR (Rule-Based) ---
+    # 1. Analisis Suhu
     if data_dict['suhu'] > 40:
-        reasons.append(f"Suhu penyimpanan ekstrem ({data_dict['suhu']}°C) mempercepat denaturasi protein dan pertumbuhan bakteri termofilik.")
-        recommendations.append("Jangan konsumsi. Risiko keracunan tinggi.")
+        reasons.append(f"🔥 **Bahaya Suhu Tinggi**: Penyimpanan pada {data_dict['suhu']}°C memicu pertumbuhan bakteri termofilik dan denaturasi protein.")
+        recommendations.append("⛔ **Tindakan**: Jangan dikonsumsi! Risiko keracunan makanan sangat tinggi.")
     elif data_dict['suhu'] > 5 and data_dict['lama_simpan'] > 4:
-        reasons.append(f"Suhu 'Danger Zone' ({data_dict['suhu']}°C) selama >4 jam memungkinkan bakteri membelah diri secara eksponensial.")
+        reasons.append(f"⚠️ **Danger Zone**: Makanan berada di suhu kritis ({data_dict['suhu']}°C) selama >4 jam. Bakteri membelah diri setiap 20 menit.")
+        recommendations.append("⚠️ **Saran**: Jika belum berbau/berlendir, panaskan hingga mendidih (100°C) sebelum dimakan. Jika ragu, buang.")
     
-    # Analisis Waktu
+    # 2. Analisis Waktu
     if data_dict['lama_simpan'] > 24 and "segar" in data_dict['bahan_baku'].lower():
-        reasons.append(f"Penyimpanan {data_dict['lama_simpan']} jam untuk bahan segar tanpa pembekuan menurunkan kualitas drastis.")
+        reasons.append(f"⏳ **Kedaluwarsa**: Penyimpanan {data_dict['lama_simpan']} jam untuk bahan segar tanpa pembekuan menurunkan kualitas nutrisi secara drastis.")
     
-    # Analisis pH
+    # 3. Analisis pH
     if data_dict['ph'] < 4.6:
-        reasons.append("pH rendah (asam). Jika bukan makanan fermentasi, ini indikasi pembusukan asam (souring).")
+        reasons.append("🧪 **Keasaman Tinggi**: pH rendah (<4.6) mengindikasikan fermentasi asam atau pembusukan (souring).")
     elif data_dict['ph'] > 7.5:
-        reasons.append("pH basa tinggi. Indikasi pemecahan protein menjadi amonia (pembusukan lanjut).")
+        reasons.append("🧪 **Kebasaan Tinggi**: pH basa (>7.5) adalah tanda pemecahan protein menjadi amonia (pembusukan lanjut).")
 
-    # Analisis Fisik
+    # 4. Analisis Fisik
     if "busuk" in data_dict['bau'].lower() or "amis" in data_dict['bau'].lower():
-        reasons.append("Bau menyimpang (off-odor) adalah tanda pasti aktivitas mikroba pembusuk.")
+        reasons.append("🤢 **Indikator Bau**: Terdeteksi bau menyimpang (off-odor) akibat aktivitas mikroba pembusuk.")
     if "lendir" in data_dict['tekstur'].lower():
-        reasons.append("Tekstur berlendir menandakan pembentukan biofilm bakteri di permukaan.")
+        reasons.append("🦠 **Biofilm Bakteri**: Tekstur berlendir menandakan koloni bakteri telah membentuk lapisan pelindung di permukaan.")
 
-    # Jika Aman
+    # Jika Aman (Default)
     if prediction_label == "AMAN DIMAKAN" and not reasons:
-        reasons.append("Parameter suhu, waktu, dan fisik berada dalam batas wajar untuk kategori ini.")
-        recommendations.append("Pastikan dimasak dengan benar sebelum dikonsumsi.")
+        reasons.append("✅ **Parameter Normal**: Suhu, waktu, dan ciri fisik berada dalam batas aman standar keamanan pangan.")
+        recommendations.append("🍽️ **Saran**: Aman dikonsumsi. Pastikan dimasak dengan benar (min 75°C) untuk keamanan ekstra.")
 
-    reason_text = " ".join(reasons) if reasons else "Kombinasi parameter memerlukan pengecekan lab lebih lanjut."
-    rec_text = " ".join(recommendations) if recommendations else "Lakukan uji organoleptik (bau/rasa) sebelum konsumsi."
+    # Gabungkan text
+    reason_text = "\n\n".join(reasons) if reasons else "🔍 Kombinasi parameter memerlukan pengecekan lab lebih lanjut."
+    rec_text = "\n\n".join(recommendations) if recommendations else "👀 Lakukan uji organoleptik (bau/rasa/lihat) sebelum konsumsi."
 
-    error_display = f"\n\n**⚠️ ERROR API:** {error_msg}" if error_msg else ""
+    error_display = f"""
+    <div style="background-color: #ffebee; padding: 10px; border-radius: 5px; margin-top: 10px; border: 1px solid #ffcdd2;">
+        <small>⚠️ <b>Sistem AI Offline:</b> {error_msg}</small>
+    </div>
+    """ if error_msg else ""
 
+    # Return Markdown yang Cantik
     return f"""
-    ### ⚠️ Mode Offline (AI Tidak Terhubung)
+    ### 🧬 Analisis Laboratorium (Mode Offline)
     
-    **Analisis Sistem:**
-    *   **Status**: {prediction_label}
-    *   **Deteksi Anomali**: {reason_text}
-    *   **Saran**: {rec_text}
+    **Status Sampel:** `{prediction_label}`
     
-    *Catatan: Terjadi masalah saat menghubungi AI. Sistem menggunakan logika offline.*
+    #### 🔍 Deteksi Anomali & Fakta Ilmiah:
+    {reason_text}
+    
+    #### 🛡️ Rekomendasi Tindakan:
+    {rec_text}
+    
+    ---
     {error_display}
     """
 
@@ -310,3 +361,20 @@ if st.button("Cek Keamanan Pangan"):
     with st.spinner("Profesor sedang menganalisis sampel di mikroskop..."):
         explanation = generate_explanation(data_dict, pred_label, risk_score)
         st.markdown(explanation)
+
+# --- ABOUT SECTION (ACADEMIC CONTEXT) ---
+with st.expander("ℹ️ Tentang Aplikasi & Metode Ilmiah"):
+    st.markdown("""
+    ### Sistem Keputusan Kelayakan Pangan (Food Safety Decision System)
+    
+    **Tujuan:**
+    Aplikasi ini dirancang untuk mendemokratisasi akses terhadap analisis keamanan pangan standar laboratorium. Menggunakan kecerdasan buatan untuk membantu mahasiswa Teknik Pangan, pelaku usaha, dan masyarakat umum dalam menilai kelayakan konsumsi makanan secara cepat dan akurat.
+
+    **Metodologi:**
+    1.  **Klasifikasi (Classification)**: Sistem menggunakan algoritma *Machine Learning* (Random Forest/Gradient Boosting) untuk mengklasifikasikan data input menjadi dua kelas: `AMAN` (1) atau `TIDAK AMAN` (0).
+    2.  **Probabilitas Risiko**: Selain label biner, model menghitung *Risk Score* berdasarkan probabilitas prediksi (0-100%).
+    3.  **Forensik AI**: Integrasi dengan LLM (Large Language Model) bertindak sebagai ahli mikrobiologi virtual untuk memberikan penjelasan kausalitas (sebab-akibat) berdasarkan parameter biokimia (pH, Suhu, Waktu).
+
+    **Validasi:**
+    Model dilatih menggunakan dataset pangan yang telah divalidasi dengan uji laboratorium standar, mencakup parameter fisik (organoleptik) dan lingkungan.
+    """)

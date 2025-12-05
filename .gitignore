@@ -16,23 +16,24 @@ parts/
 sdist/
 var/
 wheels/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 MANIFEST
 
-# Virtual Environment
-venv/
-env/
-ENV/
-
 # Streamlit
 .streamlit/secrets.toml
+
+# Virtual Environment
+.venv
+venv/
+ENV/
+env/
 
 # IDE
 .vscode/
 .idea/
 
-# OS
-Thumbs.db
-Desktop.ini
+# Dataset & Logs (Optional - keep if you want to track them)
+# history_lab.csv
