@@ -49,6 +49,22 @@ with st.sidebar:
 
 st.title("Pendeteksi Kelayakan Makanan")
 
+# --- PANDUAN PENGGUNAAN ---
+with st.expander("📖 Panduan Penggunaan Aplikasi (Klik Disini)"):
+    st.markdown("""
+    **Selamat Datang di Laboratorium Digital!** 🔬
+    Aplikasi ini membantu kamu menilai apakah makanan aman dimakan atau tidak.
+    
+    **Cara Pakai:**
+    1.  **Isi Data Fisik**: Pilih Kategori, Bahan, Warna, Bau, dan Tekstur.
+        *   *Tips: Kalau pilihan tidak ada, pilih "Lainnya (Isi Sendiri)" lalu ketik manual.*
+    2.  **Isi Kondisi Penyimpanan**:
+        *   **Suhu**: Perkirakan suhu tempat makanan disimpan.
+        *   **Waktu**: Pilih satuan (Jam/Hari) dan masukkan angkanya.
+        *   **pH**: Otomatis terisi, tapi bisa digeser jika kamu punya alat ukur pH.
+    3.  **Klik Prediksi**: Tunggu sebentar, Profesor AI akan menganalisisnya!
+    """)
+
 st.write("Isi karakteristik makanan lalu klik prediksi.")
 
 # Load model pipeline (sudah termasuk preprocessor)
@@ -68,23 +84,42 @@ except Exception as e:
     food_db = {}
     ph_db = {}
 
+# Helper Function untuk Input Custom
+def render_custom_input(label, options, key_suffix):
+    # Tambahkan opsi "Lainnya"
+    options_with_custom = list(options) + ["Lainnya (Isi Sendiri)"]
+    selected = st.selectbox(label, options_with_custom, key=f"select_{key_suffix}")
+    
+    if selected == "Lainnya (Isi Sendiri)":
+        return st.text_input(f"Masukkan {label} Manual:", key=f"text_{key_suffix}")
+    return selected
+
 # Layout 2 Kolom
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Karakteristik Fisik")
     
-    # 1. Kategori (Dinamis dari CSV)
-    kategori = st.selectbox("Kategori Pangan:", categories)
+    # 1. Kategori (Dinamis + Custom)
+    kategori = render_custom_input("Kategori Pangan:", categories, "kategori")
     
-    # 2. Bahan (Filter berdasarkan Kategori)
-    bahan_options = food_db.get(kategori, ["Lainnya"])
-    bahan = st.selectbox("Nama Bahan:", bahan_options)
+    # 2. Bahan (Filter berdasarkan Kategori + Custom)
+    # Jika kategori custom (tidak ada di db), opsi bahan kosong -> user harus isi manual
+    bahan_options = food_db.get(kategori, [])
+    if not bahan_options:
+        bahan_options = ["Lainnya (Isi Sendiri)"] # Default jika kategori baru
+        
+    bahan = render_custom_input("Nama Bahan:", bahan_options, "bahan")
     
-    # 3. Warna & Bau & Tekstur (Tetap Hardcoded/Dinamis jika mau, sementara hardcoded dulu biar cepat)
-    warna = st.selectbox("Warna:", ["merah muda", "merah segar", "coklat kehijauan", "biru lebam", "perak cerah", "mata cekung kusam", "hijau segar", "hijau kecoklatan", "oranye cerah", "merah berair", "putih bersih", "putih kekuningan", "berjamur oranye", "kekuningan aneh", "putih kental", "coklat keemasan", "coklat gelap", "berminyak parah", "warna alami", "hitam legam", "cerah", "kusam", "oranye", "berbuih"])
-    bau = st.selectbox("Bau:", ["normal", "busuk tajam", "segar", "amis menyengat", "busuk", "apek", "tanah segar", "asam menyengat", "wangi pandan", "agak asam", "tengik", "creamy", "asam kuat", "asam segar", "ragi harum", "jamur tajam", "gurih", "manis segar", "alkohol", "sedikit amis", "jeruk segar", "fermentasi"])
-    tekstur = st.selectbox("Tekstur:", ["kenyal", "licin berlendir", "lembek", "kenyal licin", "hancur", "renyah", "layu berlendir", "keras", "lembek hancur", "pulen", "menggumpal", "kental halus", "empuk", "alot", "padat juicy", "lembek berair", "padat", "retak", "cair"])
+    # 3. Warna & Bau & Tekstur (Custom)
+    warna_opts = ["merah muda", "merah segar", "coklat kehijauan", "biru lebam", "perak cerah", "mata cekung kusam", "hijau segar", "hijau kecoklatan", "oranye cerah", "merah berair", "putih bersih", "putih kekuningan", "berjamur oranye", "kekuningan aneh", "putih kental", "coklat keemasan", "coklat gelap", "berminyak parah", "warna alami", "hitam legam", "cerah", "kusam", "oranye", "berbuih"]
+    warna = render_custom_input("Warna:", warna_opts, "warna")
+    
+    bau_opts = ["normal", "busuk tajam", "segar", "amis menyengat", "busuk", "apek", "tanah segar", "asam menyengat", "wangi pandan", "agak asam", "tengik", "creamy", "asam kuat", "asam segar", "ragi harum", "jamur tajam", "gurih", "manis segar", "alkohol", "sedikit amis", "jeruk segar", "fermentasi"]
+    bau = render_custom_input("Bau:", bau_opts, "bau")
+    
+    tekstur_opts = ["kenyal", "licin berlendir", "lembek", "kenyal licin", "hancur", "renyah", "layu berlendir", "keras", "lembek hancur", "pulen", "menggumpal", "kental halus", "empuk", "alot", "padat juicy", "lembek berair", "padat", "retak", "cair"]
+    tekstur = render_custom_input("Tekstur:", tekstur_opts, "tekstur")
 
 with col2:
     st.subheader("Kondisi Penyimpanan")
@@ -92,8 +127,15 @@ with col2:
     # 4. Suhu
     suhu = st.slider("Suhu Penyimpanan (°C):", -10, 100, 25)
     
-    # 5. Lama Simpan
-    lama_simpan = st.number_input("Lama Simpan (Jam):", min_value=0, value=1)
+    # 5. Lama Simpan (Jam/Hari)
+    col_waktu1, col_waktu2 = st.columns([1, 2])
+    with col_waktu1:
+        satuan_waktu = st.radio("Satuan:", ["Jam", "Hari"])
+    with col_waktu2:
+        waktu_input = st.number_input(f"Lama Simpan ({satuan_waktu}):", min_value=0, value=1)
+    
+    # Konversi ke Jam untuk sistem
+    lama_simpan = waktu_input * 24 if satuan_waktu == "Hari" else waktu_input
     
     # 6. pH (Auto-Adjust berdasarkan Bahan)
     default_ph = float(ph_db.get(bahan, 7.0))
