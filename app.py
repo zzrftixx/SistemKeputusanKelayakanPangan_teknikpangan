@@ -315,46 +315,42 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     # API Key sudah di-set di awal (hardcoded)
     
     prompt = f"""
-    Kamu adalah Profesor Ahli Mikrobiologi dan Keamanan Pangan (Scientific Food Safety Expert). 
-    JANGAN ngarang indah. Gunakan basis DATA, TEORI ILMIAH, dan REFERENSI JURNAL/REGULASI.
+    Kamu adalah PROFESOR AUDITOR untuk sistem keamanan pangan berbasis Machine Learning.
+    Tugasmu ada 2:
+    1. VALIDASI hasil prediksi mesin (Apakah masuk akal secara ilmiah?).
+    2. Berikan penjelasan sains yang mendalam.
 
-    DATA SAMPEL (Analisis ini):
-    - Kategori: {data_dict['kategori']}
-    - Bahan: {data_dict['bahan_baku']}
-    - Parameter: Warna={data_dict['warna']}, Bau={data_dict['bau']}, Tekstur={data_dict['tekstur']}
-    - Lingkungan: Suhu={data_dict['suhu']}°C, Waktu={data_dict['lama_simpan']} jam, pH={data_dict['ph']}
-
-    HASIL MACHINE LEARNING:
-    - Status: {prediction_label} (Risk Score: {risk_score:.1f}%)
-
-    INSTRUKSI PENYUSUNAN LAPORAN ILMIAH (Wajib Cite Source):
-
-    ### 1. 📐 Landasan Teori & Kalkulasi (Scientific Basis)
-    Jelaskan logika ilmiah di balik keputusan ini menggunakan teori yang relevan:
-    - **Teori Hurdle (Leistner, 2000)**: Jelaskan bagaimana interaksi pH {data_dict['ph']}, Suhu {data_dict['suhu']}°C, dan Waktu saling mempengaruhi. Apakah ada 'barier' yang jebol?
-    - **Kinetika Pembusukan (Q10 / Arrhenius)**: Jika suhu tinggi, jelaskan secara teoritis seberapa cepat laju reaksi enzimatis/mikroba meningkat.
-    - **Faktor Intrinsik/Ekstrinsik**: Klasifikasikan parameter di atas (pH = Intrinsik, Suhu = Ekstrinsik) dan dampaknya.
-
-    ### 2. 🧫 Analisis Mikrobiologis Spesifik
-    Jangan cuma bilang "bakteri". Sebutkan Spesies dan Referensi Regulasi (SNI/BPOM/FDA).
-    - Mikroba Target: Apa bakteri patogen utama untuk {data_dict['bahan_baku']}? (Misal: Salmonella sp. untuk ayam, B. cereus untuk nasi).
-    - Batas Kritis: Sebutkan referensi batas aman (Misal: SNI 7388:2009 menetapkan batas maksimum X koloni/g).
-    - Hubungan dengan pH Sample ({data_dict['ph']}): Apakah pH ini mendukung pertumbuhan mikroba target tersebut? (Sebutkan range pH tumbuh optimum bakteri tsb).
-
-    ### 3. 🛡️ Mitigasi Berbasis Riset
-    Berikan solusi handling yang teknis, bukan tips dapur biasa.
-    - Metode Pengawetan: Sarankan metode spesifik (Pasteurisasi, Pendinginan Cepat, Pengasaman).
-    - Critical Control Point (CCP): Jika ini masuk HACCP, di titik mana kesalahan terjadi?
+    DATA SAMPEL ML:
+    - Input: {data_dict['kategori']} | {data_dict['bahan_baku']}
+    - Kondisi: Suhu {data_dict['suhu']}°C | Waktu {data_dict['lama_simpan']} jam | pH {data_dict['ph']}
+    - Fisik: Warna {data_dict['warna']} | Bau {data_dict['bau']} | Tekstur {data_dict['tekstur']}
     
+    HASIL PREDIKSI SISTEM (ML):
+    - Status: [{prediction_label}]
+    - Risk Score: {risk_score:.1f}%
+
+    INSTRUKSI AUDIT (Jawab dalam Format Markdown):
+
+    ### 1. 🔍 Validasi Prediksi (AI vs ML)
+    Evaluasi apakah prediksi sistem [{prediction_label}] valid menurut teori mikrobiologi:
+    - Jika VALID: Jelaskan kenapa data mendukung hasil ini (Misal: "Suhu rendah efektif menahan bakteri X").
+    - Jika KONTRADIKSI/BAHAYA: Misal ML bilang "AMAN" padahal Suhu 30°C/Busuk -> Kamu WAJIB MENGOREKSI. Katakan: "⚠️ **PERINGATAN AUDITOR:** Meskipun sistem memprediksi Aman, secara ilmiah ini BERISIKO TINGGI karena..."
+
+    ### 2. 🔬 Analisis Ilmiah (Hurdle Technology)
+    Jelaskan interaksi pH, Suhu, dan Aw (jika relevan):
+    - Apakah pH {data_dict['ph']} dan Suhu {data_dict['suhu']}°C cukup untuk menjadi 'Hurdle' (penghalang) bagi bakteri Salmonella/E.coli spesifik bahan ini?
+    - Referensi Teori: Sebutkan Q10 atau Arrhenius jika suhu menjadi faktor kritis.
+
+    ### 3. 🛡️ Rekomendasi Mitigasi
+    - Solusi praktis (cooking/storage/disposal).
+    - Batas Kritis (Critical Limit) dari SNI/FDA yang relevan.
+
     ### 4. 🏁 KESIMPULAN AKHIR (Final Verdict)
-    Berikan satu paragraf penutup yang TEGAS dan JELAS.
-    - "Berdasarkan analisis di atas, sampel dinyatakan [LAYAK / TIDAK LAYAK] konsumsi."
-    - Ringkas alasannya dalam satu kalimat padat.
-
-    ### 📌 Referensi
-    Cantumkan 2-3 referensi buku/jurnal/regulasi yang valid (Contoh: "Bam, FDA (2021)", "SNI 3925:2008", "Jurnal Teknologi Pangan Vol X").
-
-    Gaya Bahasa: Akademis, Objektif, Padat Data. Hindari bahasa marketing/copywriting.
+    Berikan status final darimu (bisa beda dengan ML jika ML salah).
+    - Status: [LAYAK KONSUMSI / TIDAK LAYAK / PERLU UJI LAB]
+    - Alasan utama satu kalimat.
+    
+    Gaya Bahasa: Objektif, Kritis, namun tetap menghargai hasil ML sebagai data awal. Fokus pada SAFETY FIRST.
     """
 
     # Daftar model yang akan dicoba (Fallback mechanism)
