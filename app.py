@@ -316,10 +316,17 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     
     prompt = f"""
     Kamu adalah PROFESOR AUDITOR untuk sistem keamanan pangan berbasis Machine Learning.
-    Tugasmu ada 2:
-    1. VALIDASI hasil prediksi mesin (Apakah masuk akal secara ilmiah?).
-    2. Berikan penjelasan sains yang mendalam.
-
+    
+    TUGAS UTAMA:
+    1. VALIDASI hasil prediksi mesin.
+    2. JELASKAN dengan rinci dan kritis.
+    3. Pisahkan antara Penjelasan Utama (Main View) dan Detail Referensi (Dropdown).
+    
+    ATURAN PENTING:
+    - LANGSUNG JAWAB SESUAI FORMAT DI BAWAH.
+    - DILARANG menggunakan kata pembuka seperti "Baik", "Tentu", "Berikut analisis saya".
+    - DILARANG mengulang input data di awal jawaban.
+    
     DATA SAMPEL ML:
     - Input: {data_dict['kategori']} | {data_dict['bahan_baku']}
     - Kondisi: Suhu {data_dict['suhu']}°C | Waktu {data_dict['lama_simpan']} jam | pH {data_dict['ph']}
@@ -329,28 +336,39 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     - Status: [{prediction_label}]
     - Risk Score: {risk_score:.1f}%
 
-    INSTRUKSI AUDIT (Jawab dalam Format Markdown):
+    --- FORMAT OUTPUT RESPONSE (WAJIB IKUTI) ---
+    Pisahkan jawabanmu menjadi dua bagian dengan separator "|||REFERENSI|||".
 
-    ### 1. 🔍 Validasi Prediksi (AI vs ML)
-    Evaluasi apakah prediksi sistem [{prediction_label}] valid menurut teori mikrobiologi:
-    - Jika VALID: Jelaskan kenapa data mendukung hasil ini (Misal: "Suhu rendah efektif menahan bakteri X").
-    - Jika KONTRADIKSI/BAHAYA: Misal ML bilang "AMAN" padahal Suhu 30°C/Busuk -> Kamu WAJIB MENGOREKSI. Katakan: "⚠️ **PERINGATAN AUDITOR:** Meskipun sistem memprediksi Aman, secara ilmiah ini BERISIKO TINGGI karena..."
-
-    ### 2. 🔬 Analisis Ilmiah (Hurdle Technology)
-    Jelaskan interaksi pH, Suhu, dan Aw (jika relevan):
-    - Apakah pH {data_dict['ph']} dan Suhu {data_dict['suhu']}°C cukup untuk menjadi 'Hurdle' (penghalang) bagi bakteri Salmonella/E.coli spesifik bahan ini?
-    - Referensi Teori: Sebutkan Q10 atau Arrhenius jika suhu menjadi faktor kritis.
-
-    ### 3. 🛡️ Rekomendasi Mitigasi
-    - Solusi praktis (cooking/storage/disposal).
-    - Batas Kritis (Critical Limit) dari SNI/FDA yang relevan.
-
-    ### 4. 🏁 KESIMPULAN AKHIR (Final Verdict)
-    Berikan status final darimu (bisa beda dengan ML jika ML salah).
-    - Status: [LAYAK KONSUMSI / TIDAK LAYAK / PERLU UJI LAB]
-    - Alasan utama satu kalimat.
+    BAGIAN 1: PENJELASAN UTAMA (Tampil Langsung)
+    (Jangan terlalu singkat! Berikan penjelasan "daging" yang berbobot seperti seorang konsultan ahli).
     
-    Gaya Bahasa: Objektif, Kritis, namun tetap menghargai hasil ML sebagai data awal. Fokus pada SAFETY FIRST.
+    ### 1. 🔍 Validasi & Analisis Risiko
+    - Evaluasi apakah prediksi ML masuk akal.
+    - Jelaskan interaksi Suhu vs Waktu vs Bakteri secara naratif yang mudah dipahami tapi tajam. 
+    - Jika ML salah/bahaya, jelaskan letak kesalahannya dengan tegas.
+
+    ### 2. 🛡️ Rekomendasi Penanganan
+    - Langkah konkret (Cooking temp, storage method).
+    - Solusi jika user ragu.
+
+    ### 3. 🏁 KESIMPULAN AUDITOR (Final Verdict)
+    - Status Akhir: [TETAP AMAN / TIDAK LAYAK / BERISIKO TINGGI]
+    - Alasan Kunci (1 Paragraf).
+
+    |||REFERENSI|||
+
+    BAGIAN 2: LAMPIRAN AKADEMIS (Untuk Dropdown)
+    (Bagian ini khusus untuk "nerd" moment, kalkulasi, dan daftar pustaka).
+    
+    ### 🔬 Landasan Teori & Kalkulasi Detail
+    - **Teori Hurdle**: Jelaskan secara teknis interaksi faktor intrinsik/ekstrinsik.
+    - **Kinetika Q10**: Tuliskan potensi laju pertumbuhan bakteri jika suhu naik 10°C (x2 atau x3).
+    
+    ### � Identifikasi Spesies & Toksikologi
+    - Bakteri Target Spesifik (nama latin) dan karakteristiknya pada bahan ini.
+    
+    ### 📚 Daftar Pustaka Valid
+    - Cantumkan referensi spesifik (SNI No. XXX, FDA BAM Chapter X, Jurnal YYY).
     """
 
     # Daftar model yang akan dicoba (Fallback mechanism)
@@ -445,10 +463,26 @@ if st.button("Cek Keamanan Pangan"):
     
     # AI Explanation Section
     st.divider()
-    st.subheader("🤖 Penjelasan Ahli AI (Super Detail)")
-    with st.spinner("Profesor sedang menganalisis sampel di mikroskop..."):
-        explanation = generate_explanation(data_dict, pred_label, risk_score)
-        st.markdown(explanation)
+    st.subheader("🤖 Penjelasan Ahli AI (Auditor)")
+    with st.spinner("Profesor sedang membedah jurnal & menghitung kinetika bakteri..."):
+        full_explanation = generate_explanation(data_dict, pred_label, risk_score)
+        
+        # Split Response (Summary vs Scientific Deep Dive)
+        if "|||REFERENSI|||" in full_explanation:
+            parts = full_explanation.split("|||REFERENSI|||")
+            summary_part = parts[0]
+            science_part = parts[1]
+            
+            # Tampilkan Penjelasan Utama (Tetap Detail & Berbobot)
+            st.markdown(summary_part)
+            
+            # Tampilkan Detail Referensi dalam Dropdown
+            with st.expander("📚 Analisis Teoretis, Kalkulasi Q10 & Daftar Pustaka"):
+                st.info("Bagian ini memuat detail akademis untuk keperluan riset/skripsi.")
+                st.markdown(science_part)
+        else:
+            # Fallback jika format AI tidak sesuai
+            st.markdown(full_explanation)
 
 # --- ABOUT SECTION (ACADEMIC CONTEXT) ---
 with st.expander("ℹ️ Tentang Aplikasi & Metode Ilmiah"):
