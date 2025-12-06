@@ -101,9 +101,20 @@ def render_custom_input(label, options, key_suffix):
         return st.text_input(f"Masukkan {label} Manual:", key=f"text_{key_suffix}")
     return selected
 
+# Helper Function untuk AI pH
+def get_ai_estimated_ph(bahan_nama):
+    try:
+        model_ph = genai.GenerativeModel('gemini-2.0-flash-lite')
+        prompt_ph = f"Berapa rata-rata pH dari '{bahan_nama}'? Jawab HANYA angka (contoh: 5.5). Jika rentang, ambil rata-ratanya."
+        response = model_ph.generate_content(prompt_ph)
+        # Bersihkan string agar dapat angka float
+        cleaned_text = ''.join(c for c in response.text if c.isdigit() or c == '.')
+        return float(cleaned_text)
+    except Exception as e:
+        return None
+
 # Layout 2 Kolom
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("Karakteristik Fisik")
     
@@ -144,9 +155,36 @@ with col2:
     # Konversi ke Jam untuk sistem
     lama_simpan = waktu_input * 24 if satuan_waktu == "Hari" else waktu_input
     
-    # 6. pH (Auto-Adjust berdasarkan Bahan)
-    default_ph = float(ph_db.get(bahan, 7.0))
-    ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, default_ph, help=f"Rata-rata pH untuk {bahan} adalah {default_ph}")
+    # 6. pH (Auto-Adjust Logic with AI)
+    # Initialize session state jika belum ada
+    if 'ph_val' not in st.session_state:
+        st.session_state['ph_val'] = 7.0
+        
+    # Jika user ganti bahan, update default pH dari database (Hanya jika bukan 'Lainnya')
+    # Kita pakai database lokal dulu biar cepat, AI by call button
+    if bahan in ph_db and bahan != "Lainnya (Isi Sendiri)":
+         # Hanya update jika nilai belum diset manual atau tombol ditekan (logic agak tricky, simpler: update on change bahan)
+         # Karena Streamlit rerun, kita perlu logic sederhana:
+         # Kita biarkan slider pakai key session state, kita update session state kalau perlu.
+         pass # Biarkan user/AI yang set
+
+    # UI Bundle: Info + Button (Aesthetic Layout)
+    col_info, col_btn = st.columns([3, 1])
+    with col_info:
+        st.info("ℹ️ **Info pH:** Klik tombol disamping untuk minta AI menebak nilai pH.", icon="🧪")
+    with col_btn:
+        st.write("") # Spacer vertical alignment
+        if st.button("✨ Tanya Ph Pakai AI", use_container_width=True, help="AI akan menebak pH berdasarkan nama bahan."):
+            with st.spinner("⏳ Mengukur pH..."):
+                ai_ph = get_ai_estimated_ph(bahan)
+                if ai_ph:
+                    st.session_state['ph_val'] = ai_ph
+                    st.toast(f"pH {bahan}: {ai_ph}", icon="✅")
+                else:
+                    st.error("Gagal estimasi")
+
+    # Slider Full Width
+    ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, key="ph_val", help="Nilai ini estimasi. Geser jika punya alat ukur.")
 
 # --- LOGIC FUNCTIONS (PHASE 2) ---
 
@@ -307,6 +345,11 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     Berikan solusi handling yang teknis, bukan tips dapur biasa.
     - Metode Pengawetan: Sarankan metode spesifik (Pasteurisasi, Pendinginan Cepat, Pengasaman).
     - Critical Control Point (CCP): Jika ini masuk HACCP, di titik mana kesalahan terjadi?
+    
+    ### 4. 🏁 KESIMPULAN AKHIR (Final Verdict)
+    Berikan satu paragraf penutup yang TEGAS dan JELAS.
+    - "Berdasarkan analisis di atas, sampel dinyatakan [LAYAK / TIDAK LAYAK] konsumsi."
+    - Ringkas alasannya dalam satu kalimat padat.
 
     ### 📌 Referensi
     Cantumkan 2-3 referensi buku/jurnal/regulasi yang valid (Contoh: "Bam, FDA (2021)", "SNI 3925:2008", "Jurnal Teknologi Pangan Vol X").
