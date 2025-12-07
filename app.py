@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import google.generativeai as genai
 import os
+import time
 from datetime import datetime
 
 st.set_page_config(page_title="Food Safety Lab", layout="wide")
@@ -22,8 +23,19 @@ with st.sidebar:
             api_key = st.secrets["GEMINI_API_KEY"]
             using_secrets = True
             st.success("✅ API Key terdeteksi dari Secrets (Aman & Tersembunyi).")
-    except:
-        pass
+        else:
+            # Fallback: Coba baca manual file toml (jika Streamlit belum reload secrets)
+            import toml
+            secrets_path = ".streamlit/secrets.toml"
+            if os.path.exists(secrets_path):
+                with open(secrets_path, "r") as f:
+                    secrets = toml.load(f)
+                    if "GEMINI_API_KEY" in secrets:
+                        api_key = secrets["GEMINI_API_KEY"]
+                        using_secrets = True
+                        st.success("✅ API Key terdeteksi (Manual Load).")
+    except Exception as e:
+        st.warning(f"Gagal load secrets: {e}")
 
     # 2. Opsi Timpa/Input Manual
     # Value dikosongkan agar key asli tidak terekspos di frontend (Inspect Element)
@@ -54,7 +66,7 @@ with st.sidebar:
             mime="text/csv"
         )   
 
-st.title("Pendeteksi Kelayakan Makanan")
+st.title("Pendeteksi Kelayakan Pangan")
 
 # --- PANDUAN PENGGUNAAN ---
 with st.expander("📖 Panduan Penggunaan Aplikasi (Klik Disini)"):
@@ -103,15 +115,51 @@ def render_custom_input(label, options, key_suffix):
 
 # Helper Function untuk AI pH
 def get_ai_estimated_ph(bahan_nama):
-    try:
-        model_ph = genai.GenerativeModel('gemini-2.0-flash-lite')
-        prompt_ph = f"Berapa rata-rata pH dari '{bahan_nama}'? Jawab HANYA angka (contoh: 5.5). Jika rentang, ambil rata-ratanya."
-        response = model_ph.generate_content(prompt_ph)
-        # Bersihkan string agar dapat angka float
-        cleaned_text = ''.join(c for c in response.text if c.isdigit() or c == '.')
-        return float(cleaned_text)
-    except Exception as e:
-        return None
+    models_to_try = [
+        'gemini-2.0-flash-lite',      # Prioritas 1: Lite (Cepat & Hemat)
+        'gemini-2.0-flash',           # Prioritas 2: Standard
+        'gemini-flash-latest',        # Fallback 1: Latest Stable
+        'gemini-pro'                  # Fallback 2: Old Reliable
+    ]
+    last_error = "Unknown Error"
+    
+    for model_name in models_to_try:
+        try:
+            model_ph = genai.GenerativeModel(model_name)
+            prompt_ph = f"""
+            Berapa rata-rata pH dari '{bahan_nama}'? 
+            Jawab HANYA angka satu desimal (contoh: 5.5). 
+            Jika ada rentang (misal 5-6), ambil nilai tengahnya.
+            Jangan ada teks lain.
+            """
+            
+            # Retry Logic
+            for attempt in range(3):
+                try:
+                    response = model_ph.generate_content(prompt_ph)
+                    text = response.text.strip()
+                    
+                    # Coba parsing angka langsung
+                    import re
+                    # Cari angka float pertama (5.5 atau 5)
+                    match = re.search(r"[-+]?\d*\.\d+|\d+", text)
+                    if match:
+                        return float(match.group()), None # Success, No Error
+                    
+                except Exception as e:
+                    last_error = str(e)
+                    if "429" in str(e):
+                        time.sleep(2 * (attempt + 1)) # Backoff
+                        continue
+                    else:
+                        print(f"Error AI pH (Attempt {attempt}): {e}")
+                        # Don't break immediately, try retry
+            
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    return None, last_error # Return None and the last error message
 
 # Layout 2 Kolom
 col1, col2 = st.columns(2)
@@ -176,12 +224,12 @@ with col2:
         st.write("") # Spacer vertical alignment
         if st.button("✨ Tanya Ph Pakai AI", use_container_width=True, help="AI akan menebak pH berdasarkan nama bahan."):
             with st.spinner("⏳ Mengukur pH..."):
-                ai_ph = get_ai_estimated_ph(bahan)
+                ai_ph, error_msg = get_ai_estimated_ph(bahan)
                 if ai_ph:
                     st.session_state['ph_val'] = ai_ph
                     st.toast(f"pH {bahan}: {ai_ph}", icon="✅")
                 else:
-                    st.error("Gagal estimasi")
+                    st.error(f"Gagal estimasi: {error_msg}")
 
     # Slider Full Width
     ph = st.slider("Perkiraan pH (Keasaman):", 0.0, 14.0, key="ph_val", help="Nilai ini estimasi. Geser jika punya alat ukur.")
@@ -372,11 +420,12 @@ def generate_explanation(data_dict, prediction_label, risk_score):
     """
 
     # Daftar model yang akan dicoba (Fallback mechanism)
+    # Daftar model yang akan dicoba (Fallback mechanism)
     models_to_try = [
-        'gemini-2.0-flash',       # Standard Flash (Cepat & Stabil)
-        'gemini-2.0-flash-lite',  # Lite version
-        'gemini-2.5-flash',       # Newer version
-        'gemini-flash-latest'     # Alias for latest stable
+        'gemini-2.0-flash-lite',  # Lite version (Faster)
+        'gemini-2.0-flash',       # Standard
+        'gemini-flash-latest',    # Alias for latest stable
+        'gemini-pro'              # Legacy
     ]
 
     last_error = ""
