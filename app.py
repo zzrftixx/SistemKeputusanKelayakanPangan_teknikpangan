@@ -6,8 +6,38 @@ import google.generativeai as genai
 import os
 import time
 from datetime import datetime
+import uuid
 
 st.set_page_config(page_title="Food Safety Lab", layout="wide")
+
+# --- ACCESS LOGGING MECHANISM ---
+# Fungsi jalankan di awal untuk mencatat "Visitor"
+def log_visitor():
+    file_path = "csv/access_log.csv"
+    if not os.path.exists("csv"):
+        os.makedirs("csv")
+        
+    # Generate Session ID (Simulasi user unik per sesi browser)
+    if 'session_id' not in st.session_state:
+        st.session_state['session_id'] = str(uuid.uuid4())
+    
+    # Cek apakah sudah dilog di sesi ini (supaya tidak spam saat rerun)
+    if 'logged' not in st.session_state:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        session_id = st.session_state['session_id']
+        
+        # Simpan ke CSV
+        df_new = pd.DataFrame([{"timestamp": timestamp, "session_id": session_id, "page": "Home"}])
+        
+        if not os.path.exists(file_path):
+            df_new.to_csv(file_path, index=False)
+        else:
+            df_new.to_csv(file_path, mode='a', header=False, index=False)
+            
+        st.session_state['logged'] = True
+
+log_visitor()
+# --------------------------------
 
 # Sidebar untuk Konfigurasi AI
 with st.sidebar:
